@@ -11,10 +11,11 @@ engine = GameEngine()
 DEBUG_HTML = """<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>Backend Test</title></head>
 <body style="font-family:sans-serif;max-width:700px;margin:2rem auto;">
-  <h2>Backend Canguro Operativo (sin esperar al Frontend)</h2>
-  <button onclick="call('/api/state','GET')">Ver Estado</button>
-  <button onclick="call('/api/placement/start','POST')">Iniciar Test Nivel</button>
-  <button onclick="call('/api/level/start','POST',{island:0,level_idx:0})">Jugar Isla 0 - Nivel 0</button>
+  <h2>Backend Canguro Operativo (Modo Pruebas)</h2>
+  <button onclick="call('/api/state','GET')">1. Ver Estado</button>
+  <button onclick="call('/api/placement/start','POST')">2. Iniciar Test Nivel</button>
+  <button onclick="call('/api/level/start','POST',{island:0,level_idx:0})">3. Jugar Isla 0 - Nivel 0</button>
+  <button onclick="call('/api/stats','GET')">4. Ver Estadísticas</button>
   <button onclick="call('/api/reset','POST')">Resetear Perfil</button>
   <div style="margin-top:1rem;">
     Responder:
@@ -40,6 +41,7 @@ DEBUG_HTML = """<!DOCTYPE html>
   </script>
 </body></html>"""
 
+
 class MathKangarooHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=FRONTEND_DIR, **kwargs)
@@ -57,8 +59,20 @@ class MathKangarooHandler(SimpleHTTPRequestHandler):
         return json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
 
     def do_GET(self):
+        if self.path == "/debug":
+            body = DEBUG_HTML.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+
         if self.path == "/api/state":
             return self._send_json(engine.get_full_state())
+
+        if self.path == "/api/stats":
+            return self._send_json({"analytics_by_island": engine.get_analytics()})
 
         if self.path.startswith("/data/"):
             full_path = os.path.abspath(os.path.join(DATA_DIR, "..", self.path.lstrip("/")))
@@ -71,17 +85,6 @@ class MathKangarooHandler(SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(content)
                 return
-
-        # Si index.html aún está vacío, sirve la página de pruebas integrada
-        index_file = os.path.join(FRONTEND_DIR, "index.html")
-        if self.path in ("/", "/index.html") and (not os.path.exists(index_file) or os.path.getsize(index_file) == 0):
-            body = DEBUG_HTML.encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-            return
 
         super().do_GET()
 
@@ -100,7 +103,8 @@ class MathKangarooHandler(SimpleHTTPRequestHandler):
         else:
             self._send_json({"error": "Endpoint no encontrado"}, status=404)
 
+
 if __name__ == "__main__":
     server = HTTPServer(("0.0.0.0", 8000), MathKangarooHandler)
-    print("Servidor listo en http://127.0.0.1:8000")
+    print("Servidor listo en http://127.0.0.1:8000 (Pruebas en http://127.0.0.1:8000/debug)")
     server.serve_forever()

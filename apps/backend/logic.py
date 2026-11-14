@@ -1,7 +1,9 @@
 import json
+import math
 import os
 import random
 import sqlite3
+import urllib.request
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 DATA_DIR = os.path.join(BASE_DIR, "data")
@@ -20,6 +22,80 @@ ISLANDS_META = [
 
 LEVELS_PER_ISLAND = 5      # 4 completados = 80% -> desbloquea accesorio
 PROBLEMS_PER_LEVEL = 3     # 3 problemas por nivel (~10 min máx.)
+
+
+def _cosine_sim(v1, v2):
+    dot = sum(a * b for a, b in zip(v1, v2))
+    norm1 = math.sqrt(sum(a * a for a in v1))
+    norm2 = math.sqrt(sum(b * b for b in v2))
+    return dot / (norm1 * norm2) if norm1 and norm2 else 0.0
+
+
+def _get_embedding(text):
+    """Pide el vector de 384 dimensiones a bge-small en el Arduino (puerto 8082)."""
+    req = urllib.request.Request(
+        "http://127.0.0.1:8082/v1/embeddings",
+        data=json.dumps({"input": text[:500]}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=3) as resp:
+        return json.loads(resp.read().decode("utf-8"))["data"][0]["embedding"]
+
+
+def find_similar_problem(target_prob, candidates):
+    """Busca el problema más parecido usando embeddings del Arduino (con fallback en portátil)."""
+    others = [p for p in candidates if p["id"] != target_prob["id"]]
+    if not others:
+        return target_prob
+
+    try:
+        target_vec = _get_embedding(target_prob["text"])
+        best_prob, best_score = others[0], -1.0
+        for cand in others[:15]:
+            score = _cosine_sim(target_vec, _get_embedding(cand["text"]))
+            if score > best_score:
+                best_score, best_prob = score, cand
+        return best_prob
+    except Exception:
+        words = set(w.lower() for w in target_prob["text"].split() if len(w) > 3)
+        return max(
+            others,
+            key=lambda p: len(words.intersection(w.lower() for w in p["text"].split())),
+            default=others[0],
+        )
+
+
+def generate_pedagogical_hint(problem, similar_prob):
+    """Genera una pista pedagógica en el Arduino (puerto 8081) sin revelar la solución."""
+    sim_label = similar_prob.get("label", "")
+    sim_val = (similar_prob.get("options") or {}).get(sim_label, "")
+    prompt = (
+        f"Eres un tutor de matemáticas para niños. El alumno falló este problema: '{problem['text']}'. "
+        f"Aquí tienes un problema parecido ya resuelto: '{similar_prob['text']}' cuya respuesta correcta es {sim_label} ({sim_val}). "
+        f"Explica en 2 frases cortas cómo se resuelve el ejemplo parecido para darle una pista, SIN decir la respuesta del problema del alumno."
+    )
+    try:
+        req = urllib.request.Request(
+            "http://127.0.0.1:8081/v1/chat/completions",
+            data=json.dumps({
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0,
+                "max_tokens": 70,
+            }).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            hint = json.loads(resp.read().decode("utf-8"))["choices"][0]["message"]["content"].strip()
+            correct_val = str((problem.get("options") or {}).get(problem.get("label"), ""))
+            if correct_val and len(correct_val) > 1 and correct_val in hint:
+                raise ValueError("Spoiler detectado")
+            return hint
+    except Exception:
+        return (
+            f"Fíjate en este problema parecido: «{similar_prob['text'][:160]}...» "
+            f"Su respuesta correcta era {sim_label} ({sim_val}). Usa esa misma estrategia para resolver el tuyo."
+        )
+
 
 class GameEngine:
     def __init__(self):
@@ -46,7 +122,6 @@ class GameEngine:
             if loaded > 0 and fname != "train.jsonl":
                 break
 
-        # Si alguna isla queda vacía (ej. usando sample_problems.jsonl), rellena con los que haya
         all_probs = [p for plist in self.problems_by_island.values() for p in plist]
         for i in range(8):
             if not self.problems_by_island[i] and all_probs:
@@ -76,12 +151,22 @@ class GameEngine:
                     PRIMARY KEY (island_id, level_idx)
                 )
             """)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS attempt_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    island_id INTEGER,
+                    problem_id TEXT,
+                    phase TEXT,
+                    is_correct INTEGER,
+                    used_dont_know INTEGER
+                )
+            """)
             conn.execute("INSERT OR IGNORE INTO profile (id) VALUES (1)")
             for i in range(8):
                 for lvl in range(LEVELS_PER_ISLAND):
                     conn.execute(
                         "INSERT OR IGNORE INTO island_progress (island_id, level_idx, completed) VALUES (?, ?, 0)",
-                        (i, lvl)
+                        (i, lvl),
                     )
 
     def _format_problem(self, prob):
@@ -99,7 +184,7 @@ class GameEngine:
                 "D": opts.get("D", ""),
                 "E": opts.get("E", ""),
             },
-            "image_url": img_url
+            "image_url": img_url,
         }
 
     # --- TEST INICIAL (MÁX. 20 PREGUNTAS, SIN FEEDBACK) ---
@@ -112,7 +197,7 @@ class GameEngine:
             "correct_per_level": {i: 0 for i in range(8)},
             "asked_per_level": {i: 0 for i in range(8)},
             "used_ids": set(),
-            "current_problem": None
+            "current_problem": None,
         }
         return self._next_placement_question()
 
@@ -129,7 +214,7 @@ class GameEngine:
             "status": "in_progress",
             "question_number": s["questions_asked"] + 1,
             "max_questions": 20,
-            "problem": self._format_problem(prob)
+            "problem": self._format_problem(prob),
         }
 
     def submit_placement_answer(self, answer):
@@ -163,13 +248,13 @@ class GameEngine:
             with self._get_conn() as conn:
                 conn.execute(
                     "UPDATE profile SET placement_done = 1, assigned_island = ? WHERE id = 1",
-                    (assigned,)
+                    (assigned,),
                 )
             self.active_session = None
             return {
                 "status": "finished",
                 "assigned_island": assigned,
-                "island_info": ISLANDS_META[assigned]
+                "island_info": ISLANDS_META[assigned],
             }
 
         if s["asked_per_level"][lvl] >= 2 and s["correct_per_level"][lvl] >= 1:
@@ -189,7 +274,7 @@ class GameEngine:
             "failed_for_review": [],
             "in_review": False,
             "phase": "main",
-            "current_problem": None
+            "current_problem": None,
         }
         return self._advance_level_queue()
 
@@ -202,7 +287,7 @@ class GameEngine:
                 "status": "next_problem",
                 "phase": s["phase"],
                 "remaining": len(s["queue"]) + 1,
-                "problem": self._format_problem(s["current_problem"])
+                "problem": self._format_problem(s["current_problem"]),
             }
 
         if s["failed_for_review"] and not s["in_review"]:
@@ -215,7 +300,7 @@ class GameEngine:
             self.active_session = None
             return {
                 "status": "level_failed",
-                "message": "No acertaste todos en el repaso final. ¡Vuelve a intentarlo!"
+                "message": "No acertaste todos en el repaso final. ¡Vuelve a intentarlo!",
             }
 
         reward = self._complete_level(s["island_id"], s["level_idx"])
@@ -228,25 +313,29 @@ class GameEngine:
             return {"error": "No hay nivel activo"}
 
         prob = s["current_problem"]
-        if answer == prob.get("label"):
+        is_correct = (answer == prob.get("label"))
+
+        with self._get_conn() as conn:
+            conn.execute(
+                "INSERT INTO attempt_logs (island_id, problem_id, phase, is_correct, used_dont_know) VALUES (?, ?, ?, ?, ?)",
+                (s["island_id"], prob["id"], s["phase"], int(is_correct), int(answer == "DONT_KNOW")),
+            )
+
+        if is_correct:
             res = self._advance_level_queue()
             res["feedback"] = "correct"
             return res
 
         if s["phase"] == "main":
             s["phase"] = "hint_retry"
-            # Busca otro problema del mismo nivel para usarlo como ejemplo resuelto de pista
-            similar = next((p for p in self.problems_by_island[s["island_id"]] if p["id"] != prob["id"]), prob)
-            hint_msg = (
-                f"Ejemplo resuelto similar: «{similar['text'][:180]}...» "
-                f"La respuesta correcta era {similar.get('label')} ({similar.get('options', {}).get(similar.get('label'), '')}). "
-                f"Aplica la misma lógica a tu problema."
-            )
+            similar = find_similar_problem(prob, self.problems_by_island[s["island_id"]])
+            hint_msg = generate_pedagogical_hint(prob, similar)
             return {
                 "status": "retry_with_hint",
                 "feedback": "incorrect",
                 "hint": hint_msg,
-                "problem": self._format_problem(prob)
+                "similar_problem_id": similar["id"],
+                "problem": self._format_problem(prob),
             }
 
         s["failed_for_review"].append(prob)
@@ -258,11 +347,11 @@ class GameEngine:
         with self._get_conn() as conn:
             conn.execute(
                 "UPDATE island_progress SET completed = 1 WHERE island_id = ? AND level_idx = ?",
-                (island_id, level_idx)
+                (island_id, level_idx),
             )
             c = conn.execute(
                 "SELECT COUNT(*) as c FROM island_progress WHERE island_id = ? AND completed = 1",
-                (island_id,)
+                (island_id,),
             ).fetchone()["c"]
 
             if (c / LEVELS_PER_ISLAND) >= 0.8:
@@ -273,7 +362,7 @@ class GameEngine:
                     accs.append(acc_name)
                     conn.execute(
                         "UPDATE profile SET unlocked_accessories = ? WHERE id = 1",
-                        (json.dumps(accs),)
+                        (json.dumps(accs),),
                     )
                     return {"unlocked": True, "accessory": acc_name, "island": ISLANDS_META[island_id]["name"]}
         return {"unlocked": False}
@@ -294,12 +383,25 @@ class GameEngine:
             "placement_done": bool(prof["placement_done"]),
             "assigned_island": prof["assigned_island"],
             "unlocked_accessories": json.loads(prof["unlocked_accessories"]),
-            "islands": islands
+            "islands": islands,
         }
+
+    def get_analytics(self):
+        with self._get_conn() as conn:
+            rows = conn.execute("""
+                SELECT island_id,
+                       COUNT(*) as total_attempts,
+                       SUM(is_correct) as correct_count,
+                       SUM(used_dont_know) as dont_know_count
+                FROM attempt_logs
+                GROUP BY island_id
+            """).fetchall()
+        return [dict(r) for r in rows]
 
     def reset_profile(self):
         with self._get_conn() as conn:
             conn.execute("UPDATE profile SET placement_done = 0, assigned_island = 0, unlocked_accessories = '[]' WHERE id = 1")
             conn.execute("UPDATE island_progress SET completed = 0")
+            conn.execute("DELETE FROM attempt_logs")
         self.active_session = None
         return self.get_full_state()
