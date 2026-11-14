@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hackathon Project Demo</title>
+    <!-- Tailwind CSS por CDN: estilos limpios sin compilar nada -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col items-center p-8">
+
+    <header class="w-full max-w-4xl text-center mb-8">
+        <h1 class="text-4xl font-extrabold tracking-tight">Panel de Control Inteligente</h1>
+        <p class="text-slate-400 mt-2">Solución automatizada para optimización y toma de decisiones</p>
+    </header>
+
+    <main class="w-full max-w-4xl space-y-6">
+        <!-- Tarjetas de métricas -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700">
+                <span class="text-xs uppercase text-slate-400 font-semibold">Estado</span>
+                <p id="kpi-status" class="text-2xl font-bold text-emerald-400 mt-1">Listo</p>
+            </div>
+            <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700">
+                <span class="text-xs uppercase text-slate-400 font-semibold">Métrica Principal</span>
+                <p id="kpi-metric" class="text-2xl font-bold text-cyan-400 mt-1">-- %</p>
+            </div>
+            <div class="bg-slate-800 p-5 rounded-2xl border border-slate-700">
+                <span class="text-xs uppercase text-slate-400 font-semibold">Muestras</span>
+                <p id="kpi-samples" class="text-2xl font-bold text-slate-200 mt-1">0</p>
+            </div>
+        </div>
+
+        <!-- Botón de ejecución -->
+        <div class="text-center pt-4">
+            <button onclick="ejecutarDemo()" id="btn-run" class="bg-cyan-600 hover:bg-cyan-500 text-white font-semibold px-8 py-3 rounded-xl transition duration-200 shadow-lg shadow-cyan-900/30">
+                Ejecutar Simulación
+            </button>
+        </div>
+
+        <!-- Consola de salida visual -->
+        <div class="bg-slate-950 p-6 rounded-2xl border border-slate-800 font-mono text-sm">
+            <div class="text-xs text-slate-500 mb-2">// Salida del motor técnico:</div>
+            <pre id="output-box" class="text-slate-300 overflow-x-auto">Esperando inicio de la acción...</pre>
+        </div>
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
