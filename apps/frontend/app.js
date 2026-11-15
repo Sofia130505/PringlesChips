@@ -128,9 +128,7 @@ function renderIslandScreen() {
   image.alt = `Isla ${island.name}`;
   image.style.webkitMaskImage = `url("assets/masks/mascara_${island.id}.png")`;
   image.style.maskImage = `url("assets/masks/mascara_${island.id}.png")`;
-  const bounds = getIslandBounds(island.points);
-  image.style.transformOrigin = `${((bounds.cx / 1122) * 100)}% ${((bounds.cy / 676) * 100)}%`;
-  image.style.setProperty("--island-zoom", String(Math.max(2.15, Math.min(3.1, 720 / Math.max(bounds.width, bounds.height)))));
+  positionIslandImage(image, island.id);
   art.appendChild(image);
   const levels = document.getElementById("island-levels");
   levels.replaceChildren();
@@ -145,11 +143,74 @@ function renderIslandScreen() {
     levels.appendChild(button);
   }
 }
-function getIslandBounds(points) {
-  const coords = points.split(" ").map(pair => pair.split(",").map(Number));
-  const xs = coords.map(p => p[0]), ys = coords.map(p => p[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-  return { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, width: maxX-minX, height: maxY-minY };
+function positionIslandImage(image, islandId) {
+  const mask = new Image();
+
+  mask.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = mask.naturalWidth;
+    canvas.height = mask.naturalHeight;
+
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    context.drawImage(mask, 0, 0);
+
+    const pixels = context.getImageData(
+      0, 0, canvas.width, canvas.height
+    ).data;
+
+    let minX = canvas.width;
+    let minY = canvas.height;
+    let maxX = -1;
+    let maxY = -1;
+
+    // Detectar los píxeles opacos de la silueta.
+    for (let y = 0; y < canvas.height; y++) {
+      for (let x = 0; x < canvas.width; x++) {
+        const i = (y * canvas.width + x) * 4;
+        const alpha = pixels[i + 3];
+
+        if (alpha > 10) {
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x);
+          maxY = Math.max(maxY, y);
+        }
+      }
+    }
+
+    if (maxX < 0) return;
+
+    const panel = document.getElementById("island-art");
+    const panelWidth = panel.clientWidth;
+    const panelHeight = panel.clientHeight;
+
+    // Centro y dimensiones de la silueta en coordenadas del panel.
+    const centerX = ((minX + maxX) / 2) / canvas.width * panelWidth;
+    const centerY = ((minY + maxY) / 2) / canvas.height * panelHeight;
+
+    const islandWidth = (maxX - minX) / canvas.width * panelWidth;
+    const islandHeight = (maxY - minY) / canvas.height * panelHeight;
+
+    // Ampliar la isla manteniendo un margen dentro del panel.
+    const zoom = Math.min(
+      panelWidth * 0.88 / islandWidth,
+      panelHeight * 0.88 / islandHeight
+    );
+
+    // Desplazar la silueta hasta el centro del panel.
+    const shiftX = panelWidth / 2 - centerX * zoom;
+    const shiftY = panelHeight / 2 - centerY * zoom;
+
+    image.style.setProperty("--island-zoom", zoom);
+    image.style.setProperty("--island-shift-x", `${shiftX}px`);
+    image.style.setProperty("--island-shift-y", `${shiftY}px`);
+  };
+
+  mask.onerror = () => {
+    console.error(`No se pudo cargar la máscara de ${islandId}`);
+  };
+
+  mask.src = `assets/masks/mascara_${islandId}.png`;
 }
 function openLevelTest(level) {
   pendingLevel = level;
