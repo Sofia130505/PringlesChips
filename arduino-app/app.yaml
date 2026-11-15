@@ -1,0 +1,6 @@
+name: Aventura matemática
+icon: 🦘
+description: Mapa de islas con niveles y canguro; la matriz LED dibuja una estrella al elegir una isla y un corazón al superar un nivel.
+
+bricks:
+  - arduino:web_ui

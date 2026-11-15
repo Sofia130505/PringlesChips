@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Aventura matemática</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="game-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">AVENTURA MATEMÁTICA</p>
+        <h1>Mapa de las islas</h1>
+      </div>
+      <div class="topbar-actions">
+        <button id="open-kangaroo" class="reset-button" type="button">Personalizar canguro</button>
+        <button id="reset-progress" class="reset-button" type="button" title="Volver al progreso inicial">Reiniciar progreso</button>
+      </div>
+    </header>
+
+    <section id="map-screen" class="screen screen-active">
+      <section class="map-panel" aria-label="Mapa de las ocho islas">
+        <div id="map-container" class="map-container">
+          <img class="map-base" src="assets/mapa_8_islas.png" alt="Mapa con ocho islas">
+          <div id="mask-layer" class="mask-layer" aria-hidden="true"></div>
+          <svg id="island-hitareas" class="island-hitareas" viewBox="0 0 1122 676"
+               preserveAspectRatio="none" role="group" aria-label="Seleccionar una isla"></svg>
+        </div>
+      </section>
+      <p class="map-hint">Selecciona una isla para continuar.</p>
+    </section>
+
+    <section id="island-screen" class="screen island-screen" aria-label="Niveles de la isla">
+      <div class="island-toolbar">
+        <div>
+          <p class="eyebrow">AVENTURA MATEMÁTICA</p>
+          <h1 id="island-heading">Isla</h1>
+        </div>
+        <div class="island-toolbar-actions">
+          <button id="open-kangaroo-from-island" class="reset-button" type="button">Personalizar canguro</button>
+          <button id="back-to-map-from-island" class="reset-button" type="button">Volver al mapa</button>
+        </div>
+      </div>
+      <section class="island-panel" aria-label="Selecciona un nivel">
+        <div id="island-art" class="island-art"></div>
+        <div id="island-levels" class="island-levels"></div>
+      </section>
+      <p class="map-hint">Selecciona un nivel para continuar.</p>
+    </section>
+
+    <section id="kangaroo-screen" class="screen kangaroo-screen" aria-label="Personalización del canguro">
+      <div class="kangaroo-toolbar">
+        <div>
+          <p class="eyebrow">TU PERSONAJE</p>
+          <h1>Canguro</h1>
+        </div>
+        <button id="back-to-map" class="reset-button" type="button">Volver al mapa</button>
+      </div>
+      <div class="customizer-layout">
+        <section class="kangaroo-stage" aria-label="Vista previa del canguro">
+          <div class="kangaroo-artboard">
+            <img class="kangaroo-base" src="assets/canguro.png" alt="Canguro">
+            <div id="outfit-layer" class="outfit-layer"></div>
+          </div>
+        </section>
+        <section id="accessory-rows" class="accessory-rows" aria-label="Accesorios"></section>
+      </div>
+    </section>
+  </main>
+
+  <div id="modal-backdrop" class="modal-backdrop hidden" role="presentation">
+    <section id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title" aria-describedby="modal-message">
+      <button id="modal-close" class="modal-close" type="button" aria-label="Cerrar">×</button>
+      <p id="modal-kicker" class="modal-kicker">AVENTURA</p>
+      <h2 id="modal-title">Título</h2>
+      <p id="modal-message" class="modal-message"></p>
+      <div id="modal-actions" class="modal-actions"></div>
+    </section>
+  </div>
+  <script src="app.js"></script>
+  <script src="led.js"></script>
+</body>
+</html>
