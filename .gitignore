@@ -14,3 +14,10 @@ results/*
 __pycache__/
 .venv/
 .DS_Store
+
+# Multi-agent orchestration
+orchestration/.env
+work/
+.venv-convert/
+tools/
+*.safetensors

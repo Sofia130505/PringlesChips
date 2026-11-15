@@ -1,0 +1,24 @@
+{
+  "model": "claude-fable-5-2",
+  "env": {
+    "PYTHONUTF8": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(python orchestration/run_agent.py:*)",
+      "Bash(python orchestration/apply_fixes.py:*)",
+      "Bash(python orchestration/build_ft_dataset.py:*)",
+      "Bash(python orchestration/dump_ocr_raw.py:*)",
+      "Bash(python orchestration/helm.py)",
+      "Bash(python eval.py:*)",
+      "Bash(python predict.py:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "deny": [
+      "Read(orchestration/.env)",
+      "Bash(git add data/*)"
+    ]
+  }
+}

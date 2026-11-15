@@ -1,0 +1,27 @@
+# Fine-tuning deps for the laptop: Windows 11, Python 3.11, RTX 4060 Laptop 8 GB,
+# driver 592.82 / CUDA 13.1. The CUDA 12.6 wheels below run on that driver
+# (CUDA minor-version compatibility is forward-compatible).
+#
+#   python -m pip install -r finetune\requirements-finetune.txt
+#
+# No bitsandbytes: the model is 0.8B, plain bf16 LoRA fits in 8 GB.
+# No trl: train_lora.py is a plain PyTorch loop (one dependency less to break).
+--extra-index-url https://download.pytorch.org/whl/cu126
+torch==2.7.1+cu126
+transformers==4.55.0
+tokenizers==0.21.2
+huggingface_hub==0.34.4
+accelerate==1.9.0
+datasets==4.0.0
+peft==0.16.4
+safetensors==0.5.3
+sentencepiece==0.2.0
+protobuf==5.29.5
+numpy==2.2.6
+psutil==7.0.0
+
+# GGUF conversion. convert_gguf.ps1 additionally installs the conversion
+# requirements pinned inside the llama.cpp checkout (requirements/
+# requirements-convert_hf_to_gguf.txt); that file wins if it asks for a
+# different gguf version.
+gguf==0.17.1
