@@ -25,7 +25,7 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG = os.path.join(ROOT, "work", "agent_log.jsonl")
-ORDER = ("orchestrator", "ocr_improver", "prediction_improver", "fine_tuner", "validator")
+ORDER = ("orchestrator", "ocr_improver", "prediction_improver", "fine_tuner", "evaluator", "validator")
 BATCHES = {  # batch output -> its input
     os.path.join(ROOT, "work", "ocr_improver", "fixes.jsonl"): os.path.join(ROOT, "data", "ocr_raw.jsonl"),
 }

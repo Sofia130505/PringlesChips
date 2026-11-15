@@ -34,7 +34,7 @@ ROOT = os.path.dirname(HERE)
 sys.path.insert(0, HERE)
 from helm import chat, last_reasoning, last_usage  # noqa: E402
 
-ROLES = ("ocr_improver", "prediction_improver", "fine_tuner")
+ROLES = ("ocr_improver", "prediction_improver", "fine_tuner", "evaluator")
 # The OCR improver must never see the answer, or it would "repair" options to fit it.
 FORBIDDEN_FIELDS = {"ocr_improver": {"label"}}
 

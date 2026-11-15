@@ -25,6 +25,8 @@ Workers never edit the repo. Task mode writes `work/<role>/<name>/reply.md`, and
 
 ### Rules for you as orchestrator
 
+- **You orchestrate; the DeepSeek agents do the work** (user's standing rule). You plan, write briefs, dispatch with `orchestration/run_agent.py`, review replies, call the validator and decide. All analysis, write-ups, scripts and code changes go through a DeepSeek role (`ocr_improver`, `prediction_improver`, `fine_tuner`, `evaluator`) so they show up in `agents watch`. You run only mechanical steps: fetching files, and running scripts a DeepSeek agent wrote and you reviewed.
+
 - The datathon contract wins over everything: one letter A-E, 60 s per problem, no network on the board, deterministic, standard-library Python in `copilot/`. helmcode is a laptop-only tool: nothing in `copilot/` may call it.
 - Never send labels to the OCR improver (`run_agent.py` strips them), never train on `val`, never commit `data/` (M3Kang is research-only) or `orchestration/.env`.
 - Run independent worker jobs in parallel (background shells). Keep briefs specific: the goal, the files, the metric, the constraint that matters most.

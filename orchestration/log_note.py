@@ -20,7 +20,7 @@ import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LOG_PATH = os.path.join(ROOT, "work", "agent_log.jsonl")
-ROLES = ("orchestrator", "validator", "ocr_improver", "prediction_improver", "fine_tuner")
+ROLES = ("orchestrator", "validator", "ocr_improver", "prediction_improver", "fine_tuner", "evaluator")
 KINDS = ("plan", "decision", "brief", "review", "verdict", "action", "result", "note")
 
 
