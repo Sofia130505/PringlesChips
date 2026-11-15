@@ -25,7 +25,7 @@
   #list div { padding: 4px 6px; cursor: pointer; font-size: 13px; border-radius: 4px; display: flex; justify-content: space-between; }
   #list div:hover { background: var(--bg); }
   #list div.on { background: #e8f0fe; font-weight: 600; }
-  #list .mark { width: 34px; text-align: right; }
+  #list .mark { width: 64px; text-align: right; }
   .col { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
   section { padding: 16px 20px; }
   section h2 { font-size: 15px; margin: 0 0 10px; }
@@ -95,10 +95,16 @@
         <label>Solved examples (RAG)
           <select id="rag"><option>0</option><option>1</option><option>2</option><option>3</option></select></label>
         <label><input type="checkbox" id="vision"> Send the image (vision server, slow)</label>
+        <label>Reasoning tokens
+          <select id="budget"><option>400</option><option selected>500</option><option>800</option><option>1200</option></select></label>
         <button class="primary" id="ask">Ask the model</button>
+        <button class="secondary" id="hint">Hint</button>
+        <button class="secondary" id="reason">Reason + hint</button>
         <span class="hint" id="asking"></span>
       </div>
+      <div id="hintout"></div>
       <div id="model"></div>
+      <div id="reasoning"></div>
     </section>
 
     <section>
@@ -109,7 +115,7 @@
 
     <section class="row">
       <button class="primary" id="next">Next problem</button>
-      <span class="hint">Keys: <kbd>A</kbd>–<kbd>E</kbd> answer · <kbd>M</kbd> ask the model · <kbd>N</kbd> next · <kbd>R</kbd> random</span>
+      <span class="hint">Keys: <kbd>A</kbd>–<kbd>E</kbd> answer · <kbd>M</kbd> ask the model · <kbd>K</kbd> hint · <kbd>H</kbd> hint + reasoning · <kbd>N</kbd> next · <kbd>R</kbd> random</span>
     </section>
   </div>
 </main>
@@ -130,16 +136,20 @@ function setPill(id, up, text) { const el = $(id); el.textContent = text; el.cla
 
 function score() {
   const v = Object.values(results);
-  const me = v.filter(r => "me" in r), model = v.filter(r => "model" in r);
-  $("score").textContent = `You ${me.filter(r => r.me).length}/${me.length} · Model ${model.filter(r => r.model).length}/${model.length}`;
+  const me = v.filter(r => "me" in r), ask = v.filter(r => "model" in r), why = v.filter(r => "reason" in r);
+  $("score").textContent = `You ${me.filter(r => r.me).length}/${me.length} · ` +
+    `Letter ${ask.filter(r => r.model).length}/${ask.length} · ` +
+    `Reason ${why.filter(r => r.reason).length}/${why.length}`;
 }
+
+function lock(on) { $("ask").disabled = on; $("hint").disabled = on; $("reason").disabled = on; }
 
 function renderList() {
   const lang = $("f-lang").value, level = $("f-level").value, opts = $("f-options").checked;
   shown = all.filter(p => (!lang || p.language === lang) && (level === "" || String(p.level) === level) && (!opts || p.options));
   $("list").innerHTML = shown.map(p => {
     const r = results[p.key] || {};
-    const mark = ("me" in r ? (r.me ? "✓" : "✗") : "") + ("model" in r ? (r.model ? " ✓" : " ✗") : "");
+    const mark = ("me" in r ? (r.me ? "✓" : "✗") : "") + ("model" in r ? (r.model ? " ✓" : " ✗") : "") + ("reason" in r ? (r.reason ? " R✓" : " R✗") : "");
     return `<div data-key="${esc(p.key)}" class="${current && p.key === current.key ? "on" : ""}">
       <span>L${p.level} · ${esc(p.id.replace(/^lvl-\d_/, ""))} · ${esc(p.language)}</span><span class="mark">${mark}</span></div>`;
   }).join("");
@@ -158,7 +168,7 @@ async function open(key) {
     : "OCR couldn't read the options. Without the image, the model sees only the question.";
   $("mine").innerHTML = "ABCDE".split("").map(l => `<button data-l="${l}">${l}</button>`).join("");
   $("my-verdict").textContent = ""; $("my-verdict").className = "verdict";
-  $("model").innerHTML = ""; $("asking").textContent = "";
+  $("model").innerHTML = ""; $("reasoning").innerHTML = ""; $("hintout").innerHTML = ""; $("asking").textContent = "";
   renderList();
   const row = document.querySelector(`#list div[data-key="${CSS.escape(key)}"]`);
   if (row) row.scrollIntoView({block: "nearest"});
@@ -183,15 +193,18 @@ async function answer(letter) {
 async function ask() {
   if (!current) return;
   const key = current.key, start = Date.now();
-  $("ask").disabled = true;
-  const tick = setInterval(() => $("asking").textContent = `Thinking… ${((Date.now() - start) / 1000).toFixed(0)} s`, 250);
+  $("reasoning").innerHTML = ""; $("hintout").innerHTML = "";
+  lock(true);
+  const tick = setInterval(() => $("asking").textContent = `Asking… ${((Date.now() - start) / 1000).toFixed(0)} s`, 250);
   try {
     const r = await api("/api/ask", {key, rag: +$("rag").value, vision: $("vision").checked});
     if (!current || current.key !== key) return;
-    (results[key] ||= {}).model = r.correct;
+    if (r.status === "ok") (results[key] ||= {}).model = r.correct;
+    else delete (results[key] || {}).model;
     const limit = info.time_limit, over = r.seconds > limit;
     document.querySelectorAll("#mine button").forEach(b => b.classList.toggle("model", b.dataset.l === r.answer));
     $("model").innerHTML = `
+      <p class="hint">Grammar-constrained answer: grammar [A-E], max_tokens 1.</p>
       <div class="verdict ${r.correct ? "ok" : "bad"}">The model says ${esc(r.answer)}: ${r.correct ? "correct" : "wrong, the answer is " + esc(r.label)}.</div>
       <table>
         <tr><td>Time</td><td>${r.seconds} s ${over ? `<b style="color:var(--bad)">over the ${limit} s limit</b>` : `(limit ${limit} s)`}</td></tr>
@@ -205,7 +218,74 @@ async function ask() {
   } catch (e) {
     $("model").innerHTML = `<div class="verdict bad">${esc(e.message)}</div>`;
   } finally {
-    clearInterval(tick); $("asking").textContent = ""; $("ask").disabled = false;
+    clearInterval(tick); $("asking").textContent = ""; lock(false);
+  }
+}
+
+async function reason() {
+  if (!current) return;
+  const key = current.key, start = Date.now(), budget = +$("budget").value;
+  $("model").innerHTML = ""; $("hintout").innerHTML = "";
+  lock(true);
+  const tick = setInterval(() => $("asking").textContent = `Reasoning… ${((Date.now() - start) / 1000).toFixed(0)} s`, 250);
+  try {
+    const vision = $("vision").checked;
+    const r = await api("/api/reason", {key, vision, max_tokens: budget});
+    if (!current || current.key !== key) return;
+    if (r.answer) (results[key] ||= {}).reason = r.correct;
+    document.querySelectorAll("#mine button").forEach(b => b.classList.toggle("model", Boolean(r.answer) && b.dataset.l === r.answer));
+    const verdict = r.answer
+      ? `The model finished with ${r.answer}: ${r.correct ? "correct" : "wrong, the answer is " + r.label}.`
+      : "No FINAL line: the model ran out of tokens before committing to an answer.";
+    const bigger = [400, 500, 800, 1200].find(n => n > (r.max_tokens || budget));
+    $("reasoning").innerHTML = `
+      <p class="hint">Free-form reasoning: no grammar, max_tokens ${r.max_tokens || budget}${vision ? ", image sent" : ", OCR options only"}.</p>
+      <div class="verdict ${r.answer && r.correct ? "ok" : "bad"}">${esc(verdict)}</div>
+      <table>
+        <tr><td>Time</td><td>${r.seconds} s ${vision ? "(image arm, 300 s allowance)" : ""}</td></tr>
+        <tr><td>Image</td><td>${vision ? "sent" : "not sent (OCR options only)"}</td></tr>
+      </table>
+      <pre>${esc(r.text)}</pre>
+      ${!r.answer && bigger ? `<button class="secondary" id="more">Retry with ${bigger} tokens</button>` : ""}
+      <details><summary>Prompt sent to the model</summary><pre>${esc(r.prompt)}</pre></details>`;
+    if (!r.answer && bigger) $("more").addEventListener("click", () => { $("budget").value = String(bigger); reason(); });
+    score(); renderList();
+  } catch (e) {
+    $("reasoning").innerHTML = `<div class="verdict bad">${esc(e.message)}</div>`;
+  } finally {
+    clearInterval(tick); $("asking").textContent = ""; lock(false);
+  }
+}
+
+async function giveHint() {
+  if (!current) return;
+  const key = current.key, start = Date.now();
+  $("model").innerHTML = ""; $("reasoning").innerHTML = "";
+  lock(true);
+  const tick = setInterval(() => $("asking").textContent = `Hint… ${((Date.now() - start) / 1000).toFixed(0)} s`, 250);
+  try {
+    const vision = $("vision").checked;
+    const r = await api("/api/hint", {key, vision, max_tokens: 60});
+    if (!current || current.key !== key) return;
+    const leaks = r.leaks.length
+      ? `<div class="verdict bad">Leak check: ${esc(r.leaks.join("; "))}.</div>` : "";
+    const langWarn = r.language_ok === false
+      ? `<div class="verdict bad">Language check: this problem is ${esc(r.language)}, but the hint reads as another language.</div>` : "";
+    $("hintout").innerHTML = `
+      <p class="hint">Concept nudge: at most 15 words, no numbers (grammar-enforced)${vision ? ", image sent" : ", OCR options only"}.</p>
+      ${leaks}
+      ${langWarn}
+      <div class="text">${esc(r.text)}</div>
+      <table>
+        <tr><td>Time</td><td>${r.seconds} s</td></tr>
+        <tr><td>Tokens</td><td>${r.prompt_tokens} in, ${r.output_tokens} out</td></tr>
+      </table>
+      <details><summary>Prompt sent to the model</summary><pre>${esc(r.prompt)}</pre></details>`;
+    score(); renderList();
+  } catch (e) {
+    $("hintout").innerHTML = `<div class="verdict bad">${esc(e.message)}</div>`;
+  } finally {
+    clearInterval(tick); $("asking").textContent = ""; lock(false);
   }
 }
 
@@ -260,6 +340,8 @@ $("list").addEventListener("click", e => { const d = e.target.closest("div[data-
 $("mine").addEventListener("click", e => { if (e.target.dataset.l) answer(e.target.dataset.l); });
 ["f-lang", "f-level", "f-options"].forEach(id => $(id).addEventListener("change", renderList));
 $("ask").addEventListener("click", ask);
+$("hint").addEventListener("click", giveHint);
+$("reason").addEventListener("click", reason);
 $("next").addEventListener("click", () => next(false));
 $("random").addEventListener("click", () => next(true));
 document.addEventListener("keydown", e => {
@@ -267,6 +349,8 @@ document.addEventListener("keydown", e => {
   const k = e.key.toUpperCase();
   if ("ABCDE".includes(k) && k.length === 1) answer(k);
   else if (k === "M") ask();
+  else if (k === "K") giveHint();
+  else if (k === "H") reason();
   else if (k === "N") next(false);
   else if (k === "R") next(true);
 });

@@ -12,6 +12,7 @@ import base64
 import json
 import os
 import sys
+import time
 import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -19,7 +20,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from copilot.client import get  # noqa: E402
 from copilot.config import CONFIG, ROOT  # noqa: E402
-from copilot.llm import build_messages  # noqa: E402
+from copilot.llm import (build_hint_messages, build_messages, explain, explain_messages,  # noqa: E402
+                         hint as generate_hint, hint_leaks, language_ok)
 from copilot.pipeline import solve  # noqa: E402
 from copilot.rag import Index  # noqa: E402
 
@@ -137,6 +139,48 @@ class App:
                          for s, p in result["examples"]],
         }
 
+    def reason(self, key, vision, max_tokens):
+        """Free-form hint + reasoning + final letter, timed like a normal ask."""
+        problem = self.by_key[key]
+        image = self.image_b64(key) if vision else None
+        base = VISION if vision else LLM
+        max_tokens = max(50, min(int(max_tokens), 2000))
+        start = time.perf_counter()
+        # Reasoning is exploratory, so it gets the long allowance in both arms
+        text, letter = explain(problem, image_b64=image, url=base + "/v1/chat/completions",
+                               timeout=VISION_TIME_LIMIT, max_tokens=max_tokens)
+        return {
+            "text": text,
+            "max_tokens": max_tokens,
+            "answer": letter,
+            "correct": bool(letter) and letter == problem["label"],
+            "label": problem["label"],
+            "seconds": round(time.perf_counter() - start, 2),
+            "prompt": printable(explain_messages(problem, image)),
+        }
+
+    def hint(self, key, vision, max_tokens):
+        """Level 1 of the hint ladder: one conceptual nudge, no answer."""
+        problem = self.by_key[key]
+        image = self.image_b64(key) if vision else None
+        base = VISION if vision else LLM
+        max_tokens = max(24, min(int(max_tokens), 120))
+        start = time.perf_counter()
+        text, timings = generate_hint(problem, image_b64=image, url=base + "/v1/chat/completions",
+                                      timeout=VISION_TIME_LIMIT if vision else float(CONFIG["TIME_LIMIT_SECONDS"]),
+                                      max_tokens=max_tokens)
+        return {
+            "text": text,
+            "max_tokens": max_tokens,
+            "leaks": hint_leaks(text, problem),
+            "language": problem.get("language"),
+            "language_ok": language_ok(problem, text),
+            "seconds": round(time.perf_counter() - start, 2),
+            "prompt_tokens": timings.get("prompt_n", 0),
+            "output_tokens": timings.get("predicted_n", 0),
+            "prompt": printable(build_hint_messages(problem, image)),
+        }
+
     def similar(self, key, k):
         if not self.index:
             return []
@@ -192,6 +236,12 @@ def make_handler(app):
                     return self.send(200, app.check(key, body["choice"]))
                 if self.path == "/api/ask":
                     return self.send(200, app.ask(key, int(body.get("rag", 0)), bool(body.get("vision"))))
+                if self.path == "/api/reason":
+                    return self.send(200, app.reason(key, bool(body.get("vision")),
+                                                     int(body.get("max_tokens", 400))))
+                if self.path == "/api/hint":
+                    return self.send(200, app.hint(key, bool(body.get("vision")),
+                                                   int(body.get("max_tokens", 60))))
             except (OSError, urllib.error.URLError) as error:
                 return self.send(502, {"error": f"model server: {error}"})
             return self.send(400, {"error": "bad request"})
