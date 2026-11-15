@@ -2,7 +2,7 @@
 import json
 from http.server import ThreadingHTTPServer, SimpleHTTPRequestHandler
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from logic import GameEngine
 
 FRONTEND_DIR = Path(__file__).resolve().parents[1] / "frontend"
@@ -27,8 +27,17 @@ class MathKangarooHandler(SimpleHTTPRequestHandler):
         return json.loads(self.rfile.read(length).decode("utf-8")) if length else {}
 
     def do_GET(self):
-        if urlparse(self.path).path == "/api/health":
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/health":
             return self._send_json({"status": "ok", "problems_by_level": {str(k): len(v) for k, v in engine.problems_by_level.items()}})
+        if parsed.path == "/api/hint":
+            problem_id = parse_qs(parsed.query).get("problem_id", [""])[0]
+            if not problem_id:
+                return self._send_json({"status": "error", "message": "Falta problem_id."}, 400)
+            job = engine.hint_status(problem_id)
+            if not job:
+                return self._send_json({"status": "not_found", "message": "No hay pista para ese problema."}, 404)
+            return self._send_json(job)
         return super().do_GET()
 
     def do_POST(self):

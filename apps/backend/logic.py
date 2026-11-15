@@ -1,8 +1,11 @@
-"""Motor sencillo de niveles, independiente del tutor IA."""
+"""Motor sencillo de niveles, con pistas del modelo local."""
 from __future__ import annotations
 import json
 import random
+import threading
 from pathlib import Path
+
+import hints
 
 BASE_DIR = Path(__file__).resolve().parents[2]
 FRONTEND_DIR = BASE_DIR / "apps" / "frontend"
@@ -15,6 +18,7 @@ class GameEngine:
     def __init__(self):
         self.problems_by_level = {i: [] for i in range(8)}
         self.active_session = None
+        self.hint_jobs = {}
         self._load_problems()
 
     def _load_problems(self):
@@ -39,11 +43,42 @@ class GameEngine:
                 label = str(problem.get("label", "")).upper()
                 if label not in {"A", "B", "C", "D", "E"}:
                     continue
-                self.problems_by_level[level].append({"id": str(problem["id"]), "label": label})
+                problem = dict(problem)
+                problem["id"] = str(problem["id"])
+                problem["label"] = label
+                self.problems_by_level[level].append(problem)
 
     @staticmethod
     def _public_problem(problem):
         return {"id": problem["id"], "image": f"assets/problemas_img/{problem['id']}_cat.png"}
+
+    def _start_hint(self, problem):
+        """Genera la pista en un hilo: en la placa el modelo tarda de 5 a 30 s."""
+        problem_id = problem["id"]
+        job = self.hint_jobs.get(problem_id)
+        if job and job.get("status") in {"pending", "done"}:
+            return job
+        self.hint_jobs[problem_id] = {"status": "pending", "text": ""}
+
+        def work():
+            try:
+                result = hints.generate(problem)
+                text = (result.get("text") or "").strip()
+                if not text:
+                    raise RuntimeError("pista vacía")
+                self.hint_jobs[problem_id] = {
+                    "status": "done",
+                    "text": text,
+                    "checks": {key: result.get(key) for key in ("leaks", "language_ok", "degenerate")},
+                }
+            except Exception as error:  # la pista de plantilla sigue disponible en el cliente
+                self.hint_jobs[problem_id] = {"status": "error", "text": "", "error": str(error)}
+
+        threading.Thread(target=work, daemon=True).start()
+        return self.hint_jobs[problem_id]
+
+    def hint_status(self, problem_id):
+        return self.hint_jobs.get(str(problem_id))
 
     def start_level(self, island_id, level_number):
         if island_id not in ISLAND_IDS:
@@ -81,8 +116,9 @@ class GameEngine:
 
         session["wrong_attempts"] += 1
         if session["wrong_attempts"] == 1:
-            # Placeholder deliberado: aquí se podrá llamar al tutor IA en el futuro.
-            return {"status": "hint", "message": "La IA te echa una mano", "problem": self._public_problem(problem)}
+            self._start_hint(problem)
+            return {"status": "hint", "message": "La IA te echa una mano",
+                    "problem": self._public_problem(problem), "problem_id": problem["id"]}
 
         self.active_session = None
         return {"status": "level_failed"}

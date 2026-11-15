@@ -264,12 +264,13 @@ async function submitProblemAnswer(answer) {
     if (!response.ok || result.status === "error") throw new Error(result.message || "Error al comprobar la respuesta.");
 
     if (result.status === "hint") {
-      // Placeholder de la futura llamada al tutor IA. Por ahora solo mostramos el texto acordado.
       showModal("PISTA", "La IA te echa una mano", []);
       modalCloseAction = () => {
         closeModal();
         document.querySelectorAll(".answer-button").forEach(button => { button.disabled = false; });
       };
+      const problemId = result.problem_id || (result.problem && result.problem.id);
+      if (problemId) pollHint(problemId, modalMessage);
       return;
     }
     if (result.status === "level_failed") {
@@ -308,6 +309,27 @@ function returnToIsland() {
   renderIslandScreen();
   showScreen("island-screen");
 }
+async function pollHint(problemId, messageElement) {
+  const started = Date.now();
+  while (Date.now() - started < 45000) {
+    if (document.getElementById("modal-backdrop").classList.contains("hidden")) return;
+    try {
+      const response = await fetch(`/api/hint?problem_id=${encodeURIComponent(problemId)}`);
+      const data = await response.json();
+      if (data.status === "done" && data.text) {
+        messageElement.textContent = data.text;
+        return;
+      }
+      if (data.status === "error") {
+        messageElement.textContent = "La IA no ha podido responder. Sigue intentándolo tú.";
+        return;
+      }
+    } catch (error) { /* el servidor aún no tiene la pista: reintentar */ }
+    await new Promise(resolve => setTimeout(resolve, 700));
+  }
+  messageElement.textContent = "La IA tarda demasiado. Sigue intentándolo tú.";
+}
+
 function showModal(title, message, actions) {
   modalCloseAction = null;
   modalTitle.textContent = title; modalMessage.textContent = message; modalKicker.textContent = "AVENTURA MATEMÁTICA";
