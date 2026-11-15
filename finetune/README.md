@@ -20,7 +20,7 @@ template's end-of-turn token. The user text on the board is `format_problem(prob
 "\nAnswer:"` with `grammar = "root ::= [A-E]"`, `max_tokens = 1`, `temperature 0`,
 `seed 42`; training matches that byte for byte (the trainer asserts the system prompt and
 records a SHA-256 of a fully rendered validation prompt in `val_metrics.json`).
-`data/val_fixed.jsonl` is used **only** for evaluation.
+`data/val.jsonl` is used **only** for evaluation.
 
 ## 0. Environment (once)
 

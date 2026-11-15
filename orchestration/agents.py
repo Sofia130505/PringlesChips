@@ -167,11 +167,18 @@ def jobs_lines():
         state = c("running", 33) if recent_ok else (c("done", 32) if done >= total else c("idle", 2))
         lines.append(f"batch {role:<20} {done}/{total} saved ({100 * done / max(total, 1):.0f}%), "
                      f"{errors} failed calls logged, {rate:.0f}/min{eta}  [{state}]")
-    verdicts = {}
+    verdicts, decisions = {}, {}
     for e in log:
         if e.get("role") == "validator" and e.get("kind") == "verdict":
             verdicts[e.get("name")] = e
-    for role in ("ocr_improver", "prediction_improver", "fine_tuner"):
+        if e.get("role") == "orchestrator" and e.get("kind") in ("decision", "review"):
+            decisions[e.get("name")] = e
+    aliases = {}
+    alias_path = os.path.join(ROOT, "orchestration", "job_aliases.json")
+    if os.path.exists(alias_path):
+        with open(alias_path, encoding="utf-8") as f:
+            aliases = {k: v for k, v in json.load(f).items() if not k.startswith("_")}
+    for role in ("ocr_improver", "prediction_improver", "fine_tuner", "evaluator"):
         base = os.path.join(ROOT, "work", role)
         if not os.path.isdir(base):
             continue
@@ -185,11 +192,16 @@ def jobs_lines():
                 for r, _, fs in os.walk(files_dir):
                     proposed += [os.path.relpath(os.path.join(r, f), files_dir).replace("\\", "/") for f in fs]
             when = time.strftime("%m-%d %H:%M", time.localtime(os.path.getmtime(os.path.join(d, "reply.md"))))
-            v = verdicts.get(name)
-            verdict = ((v.get("reply") or "?").split() or ["?"])[0] if v else "not validated"
+            vjob = name if name in verdicts else aliases.get(name, name)
+            v = verdicts.get(vjob)
+            verdict = ((v.get("reply") or "?").split() or ["?"])[0].strip(":.,") if v else "none yet"
+            via = f" (as {vjob})" if v and vjob != name else ""
             vcol = 32 if verdict.startswith("ACCEPT") else 31 if verdict.startswith("REJECT") else 33
-            lines.append(f"task  {role:<20} {name:<22} {when}  files: {', '.join(proposed) or '-'}  verdict: "
-                         + c(verdict, vcol))
+            d = decisions.get(name)
+            dec = ((d.get("reply") or "?").split() or ["?"])[0].strip(":.,") if d else "-"
+            dcol = 32 if dec.startswith("KEPT") else 31 if dec.startswith(("REJECT", "SUPERSEDED")) else 33
+            lines.append(f"task  {role:<20} {name:<18} {when}  orchestrator: " + c(f"{dec:<11}", dcol)
+                         + "  validator: " + c(verdict + via, vcol))
     return lines or ["No jobs yet."]
 
 

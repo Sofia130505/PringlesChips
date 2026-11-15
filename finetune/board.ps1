@@ -66,13 +66,18 @@ if ($keyOk) {
 
 # --- 2. copy only what is missing -------------------------------------------------------
 Write-Host "`n=== 2/3  Files on the board"
-Copy-Item data\val.jsonl work\fine_tuner\ft_val_laptop.jsonl -Force
 Copy-Item results\eval-20261115-030357-ft-v1-q8-laptop.csv work\fine_tuner\ft_laptop_answers.csv -Force
-$state = Run "ssh" @("unoq", "cd ~/models 2>/dev/null && (echo '$Sha  qwen3.5-0.8b-ft-v1-Q8_0.gguf' | sha256sum --check --status && echo MODEL_OK); test -f ft_val_laptop.jsonl && echo VAL_OK; test -f ft_laptop_answers.csv && echo CSV_OK; true")
+# The board's data/val.jsonl must be the same (new-OCR) file as the laptop's data\val.jsonl.
+$valSha = (Get-FileHash -Algorithm SHA256 data\val.jsonl).Hash.ToLower()
+$state = Run "ssh" @("unoq", "cd ~/models 2>/dev/null && (echo '$Sha  qwen3.5-0.8b-ft-v1-Q8_0.gguf' | sha256sum --check --status && echo MODEL_OK); (cd ~/datathon-UPC-maths-qualcomm-arduino-unoq && echo '$valSha  data/val.jsonl' | sha256sum --check --status && echo VAL_OK); test -f ft_laptop_answers.csv && echo CSV_OK; true")
 $send = @()
 if ("$state" -notmatch "MODEL_OK") { $send += $Gguf }
-if ("$state" -notmatch "VAL_OK") { $send += "work\fine_tuner\ft_val_laptop.jsonl" }
 if ("$state" -notmatch "CSV_OK") { $send += "work\fine_tuner\ft_laptop_answers.csv" }
+if (-not $DryRun -and "$state" -notmatch "VAL_OK") {
+    Write-Host "Board data/val.jsonl differs from the laptop's: replacing it (copy to a temp name, then rename)."
+    & scp data\val.jsonl unoq:~/datathon-UPC-maths-qualcomm-arduino-unoq/data/val.jsonl.tmp
+    & ssh unoq "mv -f ~/datathon-UPC-maths-qualcomm-arduino-unoq/data/val.jsonl.tmp ~/datathon-UPC-maths-qualcomm-arduino-unoq/data/val.jsonl"
+}
 if ($send.Count -gt 0) {
     Write-Host "Copying: $($send -join ', ')"
     Run "scp" (@($send) + @("unoq:~/models/")) | Out-Null

@@ -4,7 +4,7 @@ The prompt is built from copilot.llm.SYSTEM + copilot.llm.format_problem() + "\n
 and rendered with the model's chat template, so what the model sees here is what the
 board sends with a grammar-restricted, max_tokens=1 request.
 
-Letter bias: data/train_fixed.jsonl answers are skewed toward D (25%).  Every row whose
+Letter bias: data/train.jsonl answers are skewed toward D (25%).  Every row whose
 user text ends with a clean trailing "A) ... E)" block gets an extra copy whose option
 texts are permuted and relabelled, with the correct option placed round-robin at
 A,B,C,D,E so the copies are exactly uniform.  Rows without options cannot be shuffled
@@ -266,7 +266,7 @@ def parse_args():
     p = argparse.ArgumentParser(description="LoRA SFT of Qwen3.5 0.8B for M3Kang")
     p.add_argument("--model", default=BASE_MODEL, help="original HF checkpoint (NOT the GGUF)")
     p.add_argument("--sft", default=os.path.join(ROOT, "work", "fine_tuner", "sft.jsonl"))
-    p.add_argument("--val", default=os.path.join(ROOT, "data", "val_fixed.jsonl"))
+    p.add_argument("--val", default=os.path.join(ROOT, "data", "val.jsonl"))
     p.add_argument("--out-dir", default=os.path.join(ROOT, "work", "fine_tuner"))
     p.add_argument("--version", default="ft-v1")
     # augmentation

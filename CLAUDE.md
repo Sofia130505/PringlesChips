@@ -20,7 +20,7 @@ Workers never edit the repo. Task mode writes `work/<role>/<name>/reply.md`, and
 
 1. **OCR data.** `python laptop/prepare_m3kang.py --languages eng,cat` (writes `data/train.jsonl`, `data/val.jsonl`), then `python orchestration/dump_ocr_raw.py --languages eng,cat` (raw OCR lines for the problems that look broken, into `data/ocr_raw.jsonl`).
 2. **OCR repair.** `python orchestration/run_agent.py batch ocr_improver --input data/ocr_raw.jsonl --output work/ocr_improver/fixes.jsonl --workers 16`, then `python orchestration/apply_fixes.py --min-confidence 0.8` (writes `data/*_fixed.jsonl` and `work/ocr_improver/applied_report.jsonl`). Validator spot-checks before the fixed files are used anywhere.
-3. **Prediction.** Rebuild the retrieval index from the fixed data (`python build_index.py --input data/train_fixed.jsonl`, on the board), then brief the prediction improver one change at a time. Each change: validator, `eval.py --name <experiment>`, commit.
+3. **Prediction.** Rebuild the retrieval index from the fixed data (`python build_index.py --input data/train.jsonl --only-with-options`, on the board), then brief the prediction improver one change at a time. Each change: validator, `eval.py --name <experiment>`, commit.
 4. **Fine-tune.** `python orchestration/build_ft_dataset.py`, brief the fine tuner with the dataset stats and the hardware, run its scripts, convert to GGUF, measure with `eval.py --limit 0`.
 
 ### Rules for you as orchestrator
@@ -32,6 +32,7 @@ Workers never edit the repo. Task mode writes `work/<role>/<name>/reply.md`, and
 - Run independent worker jobs in parallel (background shells). Keep briefs specific: the goal, the files, the metric, the constraint that matters most.
 - An improvement counts only when `eval.py` shows it on the same problem set as the baseline. Record every experiment in `results/ablations.csv` (eval.py does this) and commit it.
 - Use `/orchestrate [focus]` to run one full cycle.
+- **Validator verdicts are recorded per job:** the validator subagent records its verdict with `python orchestration/validate.py record --job <job> ...` under the exact name used in `run_agent.py task <role> --name <job>` (put the block from `validate.py brief --job <job>` in its brief). Your own calls (kept / rejected / superseded) go to `log_note.py --role orchestrator --kind decision --job <job>`. Never record a verdict the validator did not give. `agents jobs` shows both columns; `orchestration/job_aliases.json` maps tasks that were validated together under another job name.
 - **Every agent writes in the shared log**, `work/agent_log.jsonl`, so the team can read the whole conversation:
   - DeepSeek workers: automatic (`run_agent.py` logs every request and reply).
   - Validator: logs its own verdicts with `orchestration/log_note.py` (see `.claude/agents/validator.md`).

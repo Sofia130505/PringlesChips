@@ -4,7 +4,7 @@ Uses exactly the same system prompt and problem formatting as copilot/llm.py, so
 fine-tuned model sees at training time what it will see on the board. The target is the
 single letter, as the board forces it with the grammar.
 
-  python orchestration/build_ft_dataset.py --input data/train_fixed.jsonl --out work/fine_tuner/sft.jsonl
+  python orchestration/build_ft_dataset.py --input data/train.jsonl --out work/fine_tuner/sft.jsonl
 
 Optional: --rationales work/fine_tuner/rationales.jsonl (from the fine_tuner batch role)
 adds a second copy of each problem whose target is a short solution then the letter.
@@ -24,7 +24,7 @@ from copilot.llm import SYSTEM, format_problem  # noqa: E402
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--input", default=os.path.join(ROOT, "data", "train_fixed.jsonl"))
+    p.add_argument("--input", default=os.path.join(ROOT, "data", "train.jsonl"))
     p.add_argument("--out", default=os.path.join(ROOT, "work", "fine_tuner", "sft.jsonl"))
     p.add_argument("--only-with-options", action="store_true")
     p.add_argument("--rationales")

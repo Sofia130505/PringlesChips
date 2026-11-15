@@ -1,0 +1,9 @@
+{
+  "_comment": "Task job name -> the validator job that judged it. The kept OCR rounds (r1, r2b, r3d, r4, r5) were validated together as the final code (job ocr-code-loop); superseded rounds are not in that code, so they have no alias. The fine-tune plan was validated as job finetune.",
+  "ocr-r1": "ocr-code-loop",
+  "ocr-r2b": "ocr-code-loop",
+  "ocr-r3d": "ocr-code-loop",
+  "ocr-r4": "ocr-code-loop",
+  "ocr-r5": "ocr-code-loop",
+  "finetune-plan-v1": "finetune"
+}

@@ -58,8 +58,8 @@ for i in $(seq 1 90); do
 done
 curl -s localhost:8081/v1/models | grep -o '"id":"[^"]*"' || { echo "server not answering"; exit 1; }
 
-echo "== 5/5 eval.py on 50 val problems (same val file as the laptop), RAG off"
-python3 eval.py --input "$MODELS/ft_val_laptop.jsonl" --limit 50 --rag 0 --name ft-v1-board-50
+echo "== 5/5 eval.py on 50 val problems (data/val.jsonl, same as the laptop), RAG off"
+python3 eval.py --input data/val.jsonl --limit 50 --rag 0 --name ft-v1-board-50
 
 python3 - "$MODELS/ft_laptop_answers.csv" <<'PY'
 import csv, glob, os, statistics, sys
