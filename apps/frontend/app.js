@@ -15,6 +15,8 @@ const ACCESSORY_CSV = "posiciones_accesorios.csv";
 const LEVELS_STORAGE_KEY = "islandCompletedLevels";
 let currentIslandIndex = 0;
 let pendingLevel = null;
+let currentProblemNumber = 0;
+let modalCloseAction = null;
 let returnScreenId = "map-screen";
 const ACCESSORY_TYPES = [
   { id: "cabeza", label: "Cabeza" },
@@ -212,30 +214,102 @@ function positionIslandImage(image, islandId) {
 
   mask.src = `assets/masks/mascara_${islandId}.png`;
 }
-function openLevelTest(level) {
+async function openLevelTest(level) {
   pendingLevel = level;
+  currentProblemNumber = 1;
   const island = ISLANDS[currentIslandIndex];
-  showModal(`Nivel ${level}`, `Prueba provisional del nivel ${level} de la isla ${island.name}.`,
-    [{ label: "Éxito", style: "success", action: () => finishLevel(true) },
-     { label: "Fracaso", style: "warning", action: () => finishLevel(false) }]);
-}
-function finishLevel(success) {
-  const level = pendingLevel;
-  pendingLevel = null;
-  closeModal();
-  if (success) {
-    saveCompletedLevel(ISLANDS[currentIslandIndex].id, level);
-    renderIslandScreen();
-    renderMap();
-    renderAccessoryRows();
-    showModal("¡Nivel completado!", `Has completado el nivel ${level}.`,
-      [{ label: "Continuar", style: "primary", action: closeModal }]);
-  } else {
-    showModal("Nivel no completado", "Puedes volver a intentarlo cuando quieras.",
-      [{ label: "Continuar", style: "primary", action: closeModal }]);
+  showScreen("problem-screen");
+  document.getElementById("problem-heading").textContent = `Isla ${island.name} · Nivel ${level}`;
+  document.getElementById("problem-status").textContent = "Cargando problemas…";
+  document.getElementById("problem-image").removeAttribute("src");
+  try {
+    const response = await fetch("/api/level/start", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ island_id: island.id, level_number: level })
+    });
+    const result = await response.json();
+    if (!response.ok || result.status === "error") throw new Error(result.message || "No se pudo iniciar el nivel.");
+    renderProblem(result);
+  } catch (error) {
+    showScreen("island-screen");
+    showModal("No se pudo cargar el nivel", error.message, [
+      { label: "Volver a la isla", style: "primary", action: closeModal }
+    ]);
   }
 }
+
+function renderProblem(result) {
+  if (result.status !== "question" || !result.problem) return;
+  currentProblemNumber = result.question_number;
+  const image = document.getElementById("problem-image");
+  image.src = result.problem.image;
+  image.alt = `Problema ${currentProblemNumber}`;
+  image.onerror = () => {
+    showModal("No se encuentra la imagen", `No se ha encontrado ${result.problem.image}. Comprueba que el archivo exista en assets/problemas_img.`, [
+      { label: "Cerrar", style: "primary", action: closeModal }
+    ]);
+  };
+  document.getElementById("problem-status").textContent = `Problema ${currentProblemNumber} de 3`;
+  document.querySelectorAll(".answer-button").forEach(button => { button.disabled = false; });
+}
+
+async function submitProblemAnswer(answer) {
+  document.querySelectorAll(".answer-button").forEach(button => { button.disabled = true; });
+  try {
+    const response = await fetch("/api/level/answer", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answer })
+    });
+    const result = await response.json();
+    if (!response.ok || result.status === "error") throw new Error(result.message || "Error al comprobar la respuesta.");
+
+    if (result.status === "hint") {
+      // Placeholder de la futura llamada al tutor IA. Por ahora solo mostramos el texto acordado.
+      showModal("PISTA", "La IA te echa una mano", []);
+      modalCloseAction = () => {
+        closeModal();
+        document.querySelectorAll(".answer-button").forEach(button => { button.disabled = false; });
+      };
+      return;
+    }
+    if (result.status === "level_failed") {
+      showModal("Has fallado el nivel", "Puedes volver a intentarlo cuando quieras.", [
+        { label: "Volver a la isla", style: "primary", action: returnToIsland }
+      ]);
+      modalCloseAction = returnToIsland;
+      return;
+    }
+    if (result.status === "level_completed") {
+      const island = ISLANDS[currentIslandIndex];
+      saveCompletedLevel(island.id, pendingLevel);
+      renderIslandScreen();
+      renderMap();
+      renderAccessoryRows();
+      showModal("¡Nivel completado!", `Has completado los tres problemas del nivel ${pendingLevel}.`, [
+        { label: "Volver a la isla", style: "primary", action: returnToIsland }
+      ]);
+      modalCloseAction = returnToIsland;
+      return;
+    }
+    if (result.status === "question") {
+      renderProblem(result);
+      return;
+    }
+    throw new Error("Respuesta inesperada del servidor.");
+  } catch (error) {
+    document.querySelectorAll(".answer-button").forEach(button => { button.disabled = false; });
+    showModal("Error", error.message, [{ label: "Cerrar", style: "primary", action: closeModal }]);
+  }
+}
+
+function returnToIsland() {
+  closeModal();
+  pendingLevel = null;
+  renderIslandScreen();
+  showScreen("island-screen");
+}
 function showModal(title, message, actions) {
+  modalCloseAction = null;
   modalTitle.textContent = title; modalMessage.textContent = message; modalKicker.textContent = "AVENTURA MATEMÁTICA";
   modalActions.replaceChildren();
   actions.forEach(item => {
@@ -246,7 +320,7 @@ function showModal(title, message, actions) {
   backdrop.classList.remove("hidden");
   modalActions.querySelector("button")?.focus();
 }
-function closeModal() { backdrop.classList.add("hidden"); pendingIsland = null; }
+function closeModal() { backdrop.classList.add("hidden"); pendingIsland = null; modalCloseAction = null; }
 
 function showScreen(screenId) {
   document.querySelectorAll(".screen").forEach(screen => screen.classList.toggle("screen-active", screen.id === screenId));
@@ -365,9 +439,18 @@ async function initKangarooScreen() {
   }
 }
 
-document.getElementById("modal-close").addEventListener("click", closeModal);
-backdrop.addEventListener("click", event => { if (event.target === backdrop) closeModal(); });
-document.addEventListener("keydown", event => { if (event.key === "Escape" && !backdrop.classList.contains("hidden")) closeModal(); });
+function dismissModal() {
+  if (modalCloseAction) {
+    const action = modalCloseAction;
+    modalCloseAction = null;
+    action();
+  } else {
+    closeModal();
+  }
+}
+document.getElementById("modal-close").addEventListener("click", dismissModal);
+backdrop.addEventListener("click", event => { if (event.target === backdrop) dismissModal(); });
+document.addEventListener("keydown", event => { if (event.key === "Escape" && !backdrop.classList.contains("hidden")) dismissModal(); });
 document.getElementById("reset-progress").addEventListener("click", () => {
   unlockedCount = 1;
   localStorage.removeItem(LEVELS_STORAGE_KEY);
@@ -381,6 +464,7 @@ document.getElementById("reset-progress").addEventListener("click", () => {
   renderKangarooOutfit();
   closeModal();
 });
+document.querySelectorAll(".answer-button").forEach(button => button.addEventListener("click", () => submitProblemAnswer(button.dataset.answer)));
 document.getElementById("open-kangaroo").addEventListener("click", openKangarooScreen);
 document.getElementById("back-to-map").addEventListener("click", openPreviousScreen);
 document.getElementById("back-to-map-from-island").addEventListener("click", openMapScreen);
